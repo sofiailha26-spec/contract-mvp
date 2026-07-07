@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Contract {
+  id                    String   @id @default(cuid())
+  name                  String
+  pdfUrl                String
+  creatorSignatureUrl   String?
+  creatorName           String?
+  adminSignatureUrl     String?
+  adminName             String?
+  status                String   @default("pending_creator") // pending_creator, pending_admin, completed
+  token                 String   @unique
+  createdAt             DateTime @default(now())
+}
