@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { PDFDocument } from 'pdf-lib'
-import { readFile } from 'fs/promises'
-import path from 'path'
 
 export async function GET(
   request: Request,
@@ -13,16 +11,25 @@ export async function GET(
     const contract = await prisma.contract.findUnique({
       where: { id }
     })
-    
+
     if (!contract || contract.status !== 'completed') {
       return new NextResponse('Contract not found or not completed', { status: 404 })
     }
-    
-    // Load original PDF
-    const pdfPath = path.join(process.cwd(), 'public', contract.pdfUrl)
-    const pdfBytes = await readFile(pdfPath)
+
+    // Load original PDF from base64 stored in DB (or fallback to local file)
+    let pdfBytes: ArrayBuffer | Buffer
+    if (contract.pdfData) {
+      pdfBytes = Buffer.from(contract.pdfData, 'base64')
+    } else {
+      // Fallback: load from filesystem (local dev only)
+      const { readFile } = await import('fs/promises')
+      const path = await import('path')
+      const pdfPath = path.join(process.cwd(), 'public', contract.pdfUrl)
+      pdfBytes = await readFile(pdfPath)
+    }
+
     const pdfDoc = await PDFDocument.load(pdfBytes)
-    
+
     // Append a new page for signatures
     const page = pdfDoc.addPage()
     const { width, height } = page.getSize()
@@ -31,13 +38,13 @@ export async function GET(
     if (contract.adminSignatureUrl) {
       const adminSignBytes = Buffer.from(contract.adminSignatureUrl.split(',')[1], 'base64')
       const adminImage = await pdfDoc.embedPng(adminSignBytes)
-      
+
       page.drawText(`Party A: ${contract.adminName || 'Admin'}`, {
         x: 50,
         y: height - 100,
         size: 14
       })
-      
+
       page.drawImage(adminImage, {
         x: 50,
         y: height - 200,
@@ -50,13 +57,13 @@ export async function GET(
     if (contract.creatorSignatureUrl) {
       const creatorSignBytes = Buffer.from(contract.creatorSignatureUrl.split(',')[1], 'base64')
       const creatorImage = await pdfDoc.embedPng(creatorSignBytes)
-      
+
       page.drawText(`Party B: ${contract.creatorName || 'Creator'}`, {
         x: 300,
         y: height - 100,
         size: 14
       })
-      
+
       page.drawImage(creatorImage, {
         x: 300,
         y: height - 200,
@@ -64,9 +71,9 @@ export async function GET(
         height: 80
       })
     }
-    
+
     const finalPdfBytes = await pdfDoc.save()
-    
+
     return new NextResponse(finalPdfBytes as unknown as BodyInit, {
       status: 200,
       headers: {

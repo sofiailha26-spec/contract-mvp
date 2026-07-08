@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { writeFile } from 'fs/promises'
-import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 export async function POST(request: Request) {
@@ -19,19 +17,14 @@ export async function POST(request: Request) {
     }
 
     const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-
-    const uniqueId = uuidv4()
-    const fileName = `${uniqueId}.pdf`
-    const filePath = `/uploads/${fileName}`
-    const absolutePath = path.join(process.cwd(), 'public', 'uploads', fileName)
-
-    await writeFile(absolutePath, buffer)
+    const base64 = Buffer.from(bytes).toString('base64')
+    const dataUrl = `data:application/pdf;base64,${base64}`
 
     const contract = await prisma.contract.create({
       data: {
         name,
-        pdfUrl: filePath,
+        pdfUrl: dataUrl,        // 前端 iframe 用
+        pdfData: base64,        // 下载/生成最终 PDF 时用
         token: uuidv4(),
         status: 'pending_creator'
       }

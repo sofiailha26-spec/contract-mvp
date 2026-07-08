@@ -12,6 +12,7 @@ model Contract {
   id                    String   @id @default(cuid())
   name                  String
   pdfUrl                String
+  pdfData               String?  @db.Text   // base64 encoded PDF data (for Vercel serverless)
   creatorSignatureUrl   String?
   creatorName           String?
   adminSignatureUrl     String?
