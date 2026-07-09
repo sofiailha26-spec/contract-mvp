@@ -22,16 +22,18 @@ export default function PositionPage({ params }: PositionProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Base dimensions that will represent the original PDF scale
-  const pdfWidth = 595.28 // standard A4 width
-  const pdfHeight = 841.89 // standard A4 height
+  // Internal PDF dimensions to convert back to points
+  const [pdfNativeWidth, setPdfNativeWidth] = useState(595.28)
+  const [pdfNativeHeight, setPdfNativeHeight] = useState(841.89)
 
-  // Position states (in percentages 0-1 to be responsive)
-  const [adminPos, setAdminPos] = useState({ x: 0.1, y: 0.8, page: 1 })
-  const [creatorPos, setCreatorPos] = useState({ x: 0.5, y: 0.8, page: 1 })
+  // Box positions as percentages (0 to 1)
+  const [adminPos, setAdminPos] = useState({ x: 0.1, y: 0.85, page: 1 })
+  const [creatorPos, setCreatorPos] = useState({ x: 0.5, y: 0.85, page: 1 })
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerDims, setContainerDims] = useState({ width: 0, height: 0 })
+
+  // Track dragging state
+  const [draggingTarget, setDraggingTarget] = useState<'admin' | 'creator' | null>(null)
 
   useEffect(() => {
     params.then(p => {
@@ -39,23 +41,6 @@ export default function PositionPage({ params }: PositionProps) {
       fetchPdfData(p.id)
     })
   }, [params])
-
-  // Update container dimensions when the window resizes or component loads
-  useEffect(() => {
-    const updateDims = () => {
-      if (containerRef.current) {
-        setContainerDims({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight || (containerRef.current.clientWidth * (pdfHeight/pdfWidth))
-        })
-      }
-    }
-    updateDims()
-    window.addEventListener('resize', updateDims)
-    // Small delay to ensure the page has rendered
-    setTimeout(updateDims, 500)
-    return () => window.removeEventListener('resize', updateDims)
-  }, [pdfData, currentPage])
 
   const fetchPdfData = async (contractId: string) => {
     try {
@@ -73,39 +58,59 @@ export default function PositionPage({ params }: PositionProps) {
     }
   }
 
-  const handleDrag = (e: React.DragEvent | React.TouchEvent | React.MouseEvent, type: 'admin' | 'creator', isDragEnd = false) => {
-    if (!containerRef.current) return
+  // Handle document load to get native dimensions
+  const onDocumentLoadSuccess = (pdf: any) => {
+    setNumPages(pdf.numPages)
+    setCurrentPage(pdf.numPages)
+    setAdminPos(p => ({ ...p, page: pdf.numPages }))
+    setCreatorPos(p => ({ ...p, page: pdf.numPages }))
+  }
 
-    // Support both mouse and touch events
+  const onPageLoadSuccess = (page: any) => {
+    // Get the native dimensions of the PDF page from viewport
+    const viewport = page.getViewport({ scale: 1 })
+    setPdfNativeWidth(viewport.width)
+    setPdfNativeHeight(viewport.height)
+  }
+
+  // Unified Mouse & Touch event handlers for dragging
+  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent, target: 'admin' | 'creator') => {
+    // Prevent default to avoid scrolling while dragging on mobile
+    if(e.cancelable) e.preventDefault()
+    setDraggingTarget(target)
+  }
+
+  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!draggingTarget || !containerRef.current) return
+
     let clientX, clientY;
-    if ('touches' in e && e.touches.length > 0) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else if ('changedTouches' in e && e.changedTouches.length > 0 && isDragEnd) {
-      clientX = e.changedTouches[0].clientX;
-      clientY = e.changedTouches[0].clientY;
-    } else if ('clientX' in e) {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
     } else {
-      return;
+      clientX = (e as React.MouseEvent).clientX
+      clientY = (e as React.MouseEvent).clientY
     }
 
     const rect = containerRef.current.getBoundingClientRect()
 
-    // Calculate percentage position (0 to 1) relative to the PDF page container
+    // Calculate percentage relative to the visible page container
     let x = (clientX - rect.left) / rect.width
     let y = (clientY - rect.top) / rect.height
 
-    // Constrain within bounds
-    x = Math.max(0, Math.min(x, 0.8)) // 0.8 to leave room for the box width
-    y = Math.max(0, Math.min(y, 0.9)) // 0.9 to leave room for the box height
+    // Clamp coordinates so boxes don't go outside the PDF bounds
+    x = Math.max(0, Math.min(x, 0.75)) // 0.75 to leave space for box width
+    y = Math.max(0, Math.min(y, 0.93)) // 0.93 to leave space for box height
 
-    if (type === 'admin') {
+    if (draggingTarget === 'admin') {
       setAdminPos({ ...adminPos, x, y, page: currentPage })
     } else {
       setCreatorPos({ ...creatorPos, x, y, page: currentPage })
     }
+  }
+
+  const handlePointerUp = () => {
+    setDraggingTarget(null)
   }
 
   const handleSave = async () => {
@@ -115,14 +120,14 @@ export default function PositionPage({ params }: PositionProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // Convert percentages back to actual PDF points (standard A4 sizes)
-          // Note: pdf-lib Y coordinate starts from bottom, so we invert Y
-          adminSignX: adminPos.x * pdfWidth,
-          adminSignY: (1 - adminPos.y - 0.05) * pdfHeight, // Subtract box height roughly
-          adminSignPage: adminPos.page - 1, // 0-indexed for backend
+          // Convert percentages to pdf-lib coordinate space
+          // pdf-lib's Y coordinate starts from BOTTOM left
+          adminSignX: adminPos.x * pdfNativeWidth,
+          adminSignY: (1 - adminPos.y) * pdfNativeHeight - 50, // Subtract 50 (height of signature) to match top-left to bottom-left origin
+          adminSignPage: adminPos.page - 1,
 
-          creatorSignX: creatorPos.x * pdfWidth,
-          creatorSignY: (1 - creatorPos.y - 0.05) * pdfHeight,
+          creatorSignX: creatorPos.x * pdfNativeWidth,
+          creatorSignY: (1 - creatorPos.y) * pdfNativeHeight - 50,
           creatorSignPage: creatorPos.page - 1
         })
       })
@@ -143,129 +148,143 @@ export default function PositionPage({ params }: PositionProps) {
   if (loading) return <div className="p-12 text-center">Loading PDF...</div>
   if (!pdfData) return <div className="p-12 text-center text-red-500">Could not load PDF.</div>
 
-  const boxWidth = "120px"
-  const boxHeight = "50px"
+  const boxWidth = "25%"
+  const boxHeight = "7%"
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-4">
-      <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-        <div>
-          <h1 className="text-xl font-bold">Position Signatures</h1>
-          <p className="text-sm text-gray-500">Drag the boxes to where you want the signatures to appear on the PDF.</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-md">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage <= 1}
-              className="px-3 py-1 bg-white rounded shadow-sm disabled:opacity-50"
-            >
-              Prev
-            </button>
-            <span className="text-sm font-medium px-2">Page {currentPage} of {numPages}</span>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
-              disabled={currentPage >= numPages}
-              className="px-3 py-1 bg-white rounded shadow-sm disabled:opacity-50"
-            >
-              Next
-            </button>
+    <div
+      className="min-h-screen bg-gray-50 pb-12"
+      onMouseMove={handlePointerMove}
+      onMouseUp={handlePointerUp}
+      onTouchMove={handlePointerMove}
+      onTouchEnd={handlePointerUp}
+      onMouseLeave={handlePointerUp}
+    >
+      <div className="max-w-5xl mx-auto py-6 px-4">
+        {/* Top Control Bar */}
+        <div className="mb-6 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200 gap-4">
+          <div>
+            <h1 className="text-xl font-bold">Position Signatures</h1>
+            <p className="text-sm text-gray-500">Drag the boxes exactly where you want signatures to appear.</p>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-indigo-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Positions & Finish'}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex gap-6">
-        {/* PDF Viewer Area */}
-        <div className="flex-1 bg-gray-100 rounded-lg overflow-hidden border border-gray-300 relative select-none">
-          <div
-            ref={containerRef}
-            className="relative inline-block shadow-lg mx-auto"
-            style={{ minHeight: '800px' }}
-          >
-            <Document
-              file={`data:application/pdf;base64,${pdfData}`}
-              onLoadSuccess={({ numPages }) => {
-                setNumPages(numPages)
-                // Set default page to the last page where signatures usually go
-                setCurrentPage(numPages)
-                setAdminPos(p => ({ ...p, page: numPages }))
-                setCreatorPos(p => ({ ...p, page: numPages }))
-              }}
-              className="w-full flex justify-center"
-            >
-              <Page
-                pageNumber={currentPage}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                width={containerDims.width > 0 ? containerDims.width : undefined}
-                className="max-w-full"
-              />
-            </Document>
-
-            {/* Admin Drag Box */}
-            {adminPos.page === currentPage && (
-              <div
-                className="absolute border-2 border-dashed border-blue-500 bg-blue-500/20 rounded cursor-move flex items-center justify-center text-blue-700 font-bold text-xs shadow-md z-10"
-                style={{
-                  left: `${adminPos.x * 100}%`,
-                  top: `${adminPos.y * 100}%`,
-                  width: boxWidth,
-                  height: boxHeight,
-                  touchAction: 'none'
-                }}
-                draggable
-                onDragEnd={(e) => handleDrag(e, 'admin', true)}
-                onTouchEnd={(e) => handleDrag(e, 'admin', true)}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-md">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="px-3 py-1 bg-white rounded shadow-sm disabled:opacity-50"
               >
-                My Sign (Admin)
-              </div>
-            )}
-
-            {/* Creator Drag Box */}
-            {creatorPos.page === currentPage && (
-              <div
-                className="absolute border-2 border-dashed border-green-500 bg-green-500/20 rounded cursor-move flex items-center justify-center text-green-700 font-bold text-xs shadow-md z-10"
-                style={{
-                  left: `${creatorPos.x * 100}%`,
-                  top: `${creatorPos.y * 100}%`,
-                  width: boxWidth,
-                  height: boxHeight,
-                  touchAction: 'none'
-                }}
-                draggable
-                onDragEnd={(e) => handleDrag(e, 'creator', true)}
-                onTouchEnd={(e) => handleDrag(e, 'creator', true)}
+                Prev
+              </button>
+              <span className="text-sm font-medium px-2">Page {currentPage} of {numPages}</span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
+                disabled={currentPage >= numPages}
+                className="px-3 py-1 bg-white rounded shadow-sm disabled:opacity-50"
               >
-                Creator Sign
-              </div>
-            )}
+                Next
+              </button>
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-indigo-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save & Finish'}
+            </button>
           </div>
         </div>
 
-        {/* Instructions Sidebar */}
-        <div className="w-64 bg-white p-4 rounded-lg shadow-sm border border-gray-200 self-start">
-          <h3 className="font-bold mb-3">How to use</h3>
-          <ol className="list-decimal pl-4 space-y-2 text-sm text-gray-600">
-            <li>Navigate to the page where you want the signatures (usually the last page).</li>
-            <li>Drag the blue box to where you want <b>your</b> signature to go.</li>
-            <li>Drag the green box to where the <b>Creator's</b> signature should go.</li>
-            <li>Click Save. Signatures will be perfectly placed in these boxes.</li>
-          </ol>
-          <div className="mt-6 pt-4 border-t">
-             {adminPos.page !== currentPage && (
-               <div className="text-xs text-blue-600 mb-2">My Sign is on page {adminPos.page}</div>
-             )}
-             {creatorPos.page !== currentPage && (
-               <div className="text-xs text-green-600">Creator Sign is on page {creatorPos.page}</div>
-             )}
+        {/* Main Content Area */}
+        <div className="flex flex-col md:flex-row gap-6">
+
+          {/* Instructions Sidebar */}
+          <div className="w-full md:w-64 bg-white p-4 rounded-lg shadow-sm border border-gray-200 self-start order-2 md:order-1">
+            <h3 className="font-bold mb-3">Instructions</h3>
+            <ol className="list-decimal pl-4 space-y-2 text-sm text-gray-600">
+              <li>Go to the page where signatures should be (usually the last page).</li>
+              <li>Drag the <span className="text-blue-600 font-semibold">Blue box</span> to where YOUR signature goes.</li>
+              <li>Drag the <span className="text-green-600 font-semibold">Green box</span> to where the CREATOR'S signature goes.</li>
+              <li>Click Save & Finish.</li>
+            </ol>
+            <div className="mt-6 pt-4 border-t space-y-2">
+              {adminPos.page !== currentPage && (
+                <div className="text-xs font-medium text-blue-600 bg-blue-50 p-2 rounded">
+                  Your Sign is currently on page {adminPos.page}
+                </div>
+              )}
+              {creatorPos.page !== currentPage && (
+                <div className="text-xs font-medium text-green-600 bg-green-50 p-2 rounded">
+                  Creator Sign is currently on page {creatorPos.page}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* PDF Viewer Area */}
+          <div className="flex-1 bg-gray-300 rounded-lg overflow-hidden border border-gray-400 p-2 flex justify-center order-1 md:order-2 shadow-inner">
+            {/* The wrapper that contains the PDF page and the draggable overlays */}
+            <div
+              ref={containerRef}
+              className="relative shadow-xl bg-white"
+              style={{ width: 'fit-content' }}
+            >
+              <Document
+                file={`data:application/pdf;base64,${pdfData}`}
+                onLoadSuccess={onDocumentLoadSuccess}
+                className="flex justify-center"
+              >
+                <Page
+                  pageNumber={currentPage}
+                  onLoadSuccess={onPageLoadSuccess}
+                  renderTextLayer={false}
+                  renderAnnotationLayer={false}
+                  // We let the page render at its native scale or responsive width
+                  className="max-w-full"
+                  width={window.innerWidth < 768 ? window.innerWidth - 64 : undefined} // Scale down on mobile
+                />
+              </Document>
+
+              {/* Admin Drag Box */}
+              {adminPos.page === currentPage && (
+                <div
+                  className="absolute border-2 border-dashed border-blue-600 bg-blue-500/30 cursor-move flex items-center justify-center text-blue-800 font-bold text-xs sm:text-sm shadow-md transition-shadow hover:shadow-lg hover:bg-blue-500/40"
+                  style={{
+                    left: `${adminPos.x * 100}%`,
+                    top: `${adminPos.y * 100}%`,
+                    width: boxWidth,
+                    height: boxHeight,
+                    touchAction: 'none',
+                    zIndex: draggingTarget === 'admin' ? 50 : 10
+                  }}
+                  onMouseDown={(e) => handlePointerDown(e, 'admin')}
+                  onTouchStart={(e) => handlePointerDown(e, 'admin')}
+                >
+                  My Sign
+                </div>
+              )}
+
+              {/* Creator Drag Box */}
+              {creatorPos.page === currentPage && (
+                <div
+                  className="absolute border-2 border-dashed border-green-600 bg-green-500/30 cursor-move flex items-center justify-center text-green-800 font-bold text-xs sm:text-sm shadow-md transition-shadow hover:shadow-lg hover:bg-green-500/40"
+                  style={{
+                    left: `${creatorPos.x * 100}%`,
+                    top: `${creatorPos.y * 100}%`,
+                    width: boxWidth,
+                    height: boxHeight,
+                    touchAction: 'none',
+                    zIndex: draggingTarget === 'creator' ? 50 : 10
+                  }}
+                  onMouseDown={(e) => handlePointerDown(e, 'creator')}
+                  onTouchStart={(e) => handlePointerDown(e, 'creator')}
+                >
+                  Creator Sign
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
