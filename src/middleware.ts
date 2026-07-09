@@ -70,5 +70,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/:path*'
+  // 我们只显式地匹配动态路由，以防止静态文件误入中间件
+  matcher: '/((?!_next/static|_next/image|favicon.ico).*)',
 }
