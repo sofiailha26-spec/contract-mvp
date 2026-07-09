@@ -13,6 +13,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // 拦截 Next.js 预取请求，避免静默触发原生的浏览器弹窗
+  const isPrefetch =
+    request.headers.get('x-middleware-prefetch') ||
+    request.headers.get('x-nextjs-data') ||
+    request.headers.get('next-router-prefetch') ||
+    request.headers.get('rsc') === '1' ||
+    request.headers.get('purpose') === 'prefetch'
+
   // 获取当前携带的账号密码
   const basicAuth = request.headers.get('authorization')
   let user = '', pwd = ''
@@ -32,6 +40,12 @@ export function middleware(request: NextRequest) {
   const isSharedRoute = pathname.startsWith('/api/contracts') && pathname.endsWith('/original')
 
   const send401 = (realm: string) => {
+    // 核心：如果是 Next.js 的背后预拉取请求，千万不要发送 WWW-Authenticate。只发送 403 阻断它。
+    // 这解决了“弹出框点取消就没了”的问题，说明弹窗是由隐藏请求触发的。
+    if (isPrefetch) {
+      return new NextResponse('Unauthorized prefetch', { status: 403 })
+    }
+
     return new NextResponse('Authentication required', {
       status: 401,
       headers: { 'WWW-Authenticate': `Basic realm="${realm}"` }
