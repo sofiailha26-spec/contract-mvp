@@ -31,8 +31,8 @@ export async function GET(
     const { width, height } = targetPage.getSize()
 
     // 提高 yPos 的值，在 PDF 中 0 是最底部，数值越大位置越靠上。
-    // 把 80 提高到 190，让签名向上靠近正文（距离正文大约 0.5cm）
-    const yPos = 190
+    // 再向上移动 1.5cm（约 42pt），调整为 232
+    const yPos = 232
     const xPosA = 60
     const xPosB = 320
 
