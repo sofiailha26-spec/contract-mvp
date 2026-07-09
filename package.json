@@ -16,6 +16,7 @@
     "gotenberg-js-client": "^0.7.4",
     "next": "16.2.10",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^3.11.174",
     "pizzip": "^3.2.0",
     "prisma": "^6.19.3",
     "react": "19.2.4",
