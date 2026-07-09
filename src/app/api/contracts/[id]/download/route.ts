@@ -30,25 +30,14 @@ export async function GET(
     const page = pdfDoc.addPage()
     const { width, height } = page.getSize()
 
-    // Prepare names, fallback to english to prevent pdf-lib winAnsi encoding error if user inputs chinese
-    // We strictly encode the string to safe ASCII or fallback
-    const safeAdminName = (contract.adminName || 'Admin').replace(/[^\x00-\x7F]/g, '*');
-    const safeCreatorName = (contract.creatorName || 'Creator').replace(/[^\x00-\x7F]/g, '*');
-
     // Draw Admin Signature (Party A)
     if (contract.adminSignatureUrl) {
       const adminSignBytes = Buffer.from(contract.adminSignatureUrl.split(',')[1], 'base64')
       const adminImage = await pdfDoc.embedPng(adminSignBytes)
 
-      page.drawText(`Party A: ${safeAdminName}`, {
-        x: 50,
-        y: height - 100,
-        size: 14
-      })
-
       page.drawImage(adminImage, {
         x: 50,
-        y: height - 200,
+        y: height - 150,
         width: 150,
         height: 80
       })
@@ -59,15 +48,9 @@ export async function GET(
       const creatorSignBytes = Buffer.from(contract.creatorSignatureUrl.split(',')[1], 'base64')
       const creatorImage = await pdfDoc.embedPng(creatorSignBytes)
 
-      page.drawText(`Party B: ${safeCreatorName}`, {
-        x: 300,
-        y: height - 100,
-        size: 14
-      })
-
       page.drawImage(creatorImage, {
         x: 300,
-        y: height - 200,
+        y: height - 150,
         width: 150,
         height: 80
       })
