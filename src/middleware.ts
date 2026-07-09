@@ -4,16 +4,22 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // 1. **强制白名单优先**：只要路径包含 sign 或者 original，绝对不管
+  // 完全放行 /sign 和相关 API，以及 Next.js 静态文件
   if (
-    pathname.includes('/sign') ||
-    pathname.includes('/api/sign') ||
+    pathname.startsWith('/sign') ||
+    pathname.startsWith('/api/sign') ||
+    pathname.startsWith('/_next') ||
+    pathname.includes('.') ||
     pathname.endsWith('/original')
   ) {
     return NextResponse.next()
   }
 
-  // 2. **精确匹配黑名单**：只在这个名单里的才拦截
+  // Next.js App Router 中，后台的预取请求经常带有 x-nextjs-data 头
+  // 我们需要确保当达人页面预取主页信息时，不要返回 401 触发原生弹窗
+  // 相反，我们可以返回一个普通的 401 状态但不带 WWW-Authenticate 头，或者直接在预取时放行
+  const isPrefetch = request.headers.get('x-middleware-prefetch') || request.headers.get('x-nextjs-data')
+
   const isProtected =
     pathname === '/' ||
     pathname.startsWith('/contracts') ||
@@ -30,6 +36,12 @@ export function middleware(request: NextRequest) {
       }
     }
 
+    // 如果这是一个预加载请求，返回 404 或者空数据，防止触发浏览器的账密弹窗
+    if (isPrefetch) {
+      return new NextResponse(null, { status: 404 })
+    }
+
+    // 只有在用户直接访问管理页面时，才发送 WWW-Authenticate 头
     return new NextResponse('Authentication required', {
       status: 401,
       headers: {
@@ -41,7 +53,6 @@ export function middleware(request: NextRequest) {
   return NextResponse.next()
 }
 
-// 不使用 matcher 过滤，让中间件自己判断，防止 Next.js 隐藏的预加载请求（如 RSC）跳过白名单判断
 export const config = {
   matcher: '/:path*'
 }
