@@ -4,12 +4,21 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // 我们只对这三个准确的管理后台路径进行密码保护
+  // 1. **强制白名单优先**：只要路径包含 sign 或者 original，绝对不管
+  if (
+    pathname.includes('/sign') ||
+    pathname.includes('/api/sign') ||
+    pathname.endsWith('/original')
+  ) {
+    return NextResponse.next()
+  }
+
+  // 2. **精确匹配黑名单**：只在这个名单里的才拦截
   const isProtected =
     pathname === '/' ||
     pathname.startsWith('/contracts') ||
     pathname === '/api/upload' ||
-    (pathname.startsWith('/api/contracts') && !pathname.endsWith('/original') && !pathname.endsWith('/download'))
+    (pathname.startsWith('/api/contracts') && !pathname.endsWith('/download'))
 
   if (isProtected) {
     const basicAuth = request.headers.get('authorization')
@@ -29,16 +38,10 @@ export function middleware(request: NextRequest) {
     })
   }
 
-  // 其他所有路由（包括达人端的 /sign，静态资源等）都默认放行
   return NextResponse.next()
 }
 
+// 不使用 matcher 过滤，让中间件自己判断，防止 Next.js 隐藏的预加载请求（如 RSC）跳过白名单判断
 export const config = {
-  // 只匹配明确需要拦截的路由前缀，进一步降低错误匹配风险
-  matcher: [
-    '/',
-    '/contracts/:path*',
-    '/api/upload',
-    '/api/contracts/:path*'
-  ]
+  matcher: '/:path*'
 }
