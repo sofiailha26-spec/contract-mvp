@@ -16,8 +16,7 @@ export async function GET(
       return new NextResponse('Contract not found or not completed', { status: 404 })
     }
 
-    // Load original PDF from base64 stored in DB
-    let pdfBytes: ArrayBuffer | Buffer
+    let pdfBytes: Buffer
     if (contract.pdfData) {
       pdfBytes = Buffer.from(contract.pdfData, 'base64')
     } else {
@@ -26,33 +25,42 @@ export async function GET(
 
     const pdfDoc = await PDFDocument.load(pdfBytes)
 
-    // Append a new page for signatures
-    const page = pdfDoc.addPage()
-    const { width, height } = page.getSize()
+    // Append signatures to the LAST existing page instead of creating a new one
+    const pages = pdfDoc.getPages()
+    const targetPage = pages[pages.length - 1]
+    const { width, height } = targetPage.getSize()
+
+    // 假设最后一页底部有大约 150pt 的留白
+    const yPos = 80 // 距离底部 80pt 的位置
+    const xPosA = 60
+    const xPosB = 320
+
+    // Prepare images
+    const adminSignBytes = contract.adminSignatureUrl ? Buffer.from(contract.adminSignatureUrl.split(',')[1], 'base64') : null
+    const creatorSignBytes = contract.creatorSignatureUrl ? Buffer.from(contract.creatorSignatureUrl.split(',')[1], 'base64') : null
 
     // Draw Admin Signature (Party A)
-    if (contract.adminSignatureUrl) {
-      const adminSignBytes = Buffer.from(contract.adminSignatureUrl.split(',')[1], 'base64')
+    if (adminSignBytes) {
       const adminImage = await pdfDoc.embedPng(adminSignBytes)
-
-      page.drawImage(adminImage, {
-        x: 50,
-        y: height - 150,
-        width: 150,
-        height: 80
+      // 根据图片比例缩放
+      const scale = 50 / adminImage.height
+      targetPage.drawImage(adminImage, {
+        x: xPosA,
+        y: yPos,
+        width: adminImage.width * scale,
+        height: 50
       })
     }
 
     // Draw Creator Signature (Party B)
-    if (contract.creatorSignatureUrl) {
-      const creatorSignBytes = Buffer.from(contract.creatorSignatureUrl.split(',')[1], 'base64')
+    if (creatorSignBytes) {
       const creatorImage = await pdfDoc.embedPng(creatorSignBytes)
-
-      page.drawImage(creatorImage, {
-        x: 300,
-        y: height - 150,
-        width: 150,
-        height: 80
+      const scale = 50 / creatorImage.height
+      targetPage.drawImage(creatorImage, {
+        x: xPosB,
+        y: yPos,
+        width: creatorImage.width * scale,
+        height: 50
       })
     }
 
