@@ -30,8 +30,9 @@ export async function GET(
     const targetPage = pages[pages.length - 1]
     const { width, height } = targetPage.getSize()
 
-    // 假设最后一页底部有大约 150pt 的留白
-    const yPos = 80 // 距离底部 80pt 的位置
+    // 提高 yPos 的值，在 PDF 中 0 是最底部，数值越大位置越靠上。
+    // 把 80 提高到 190，让签名向上靠近正文（距离正文大约 0.5cm）
+    const yPos = 190
     const xPosA = 60
     const xPosB = 320
 
