@@ -44,10 +44,15 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 指定 Middleware 需要匹配的路由模式，可以优化性能
+  // 必须把需要放行的页面从 matcher 中排除，因为 matcher 会拦截页面的首次 HTML 请求
   matcher: [
-    '/',
-    '/contracts/:path*',
-    '/api/:path*',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - sign (达人签名页面)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!sign|_next/static|_next/image|favicon.ico).*)',
   ]
 }
