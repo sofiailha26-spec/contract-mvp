@@ -24,7 +24,9 @@ export default function UploadPage() {
         body: formData
       })
       if (res.ok) {
-        router.push('/')
+        const data = await res.json()
+        // Instead of going home, redirect to the positioning page
+        router.push(`/contracts/${data.id}/position`)
       } else {
         const data = await res.json()
         alert(`Error: ${data.error}`)
@@ -79,7 +81,7 @@ export default function UploadPage() {
               disabled={loading || !file}
               className="rounded-md bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
             >
-              {loading ? 'Uploading...' : 'Upload & Create'}
+              {loading ? 'Uploading...' : 'Upload & Position Signatures'}
             </button>
             <button
               type="button"

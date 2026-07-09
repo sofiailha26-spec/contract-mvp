@@ -13,6 +13,16 @@ model Contract {
   name                  String
   pdfUrl                String
   pdfData               String?  @db.Text   // base64 encoded PDF data (for Vercel serverless)
+
+  // Signature positioning (saved from drag-and-drop UI)
+  adminSignX            Float?
+  adminSignY            Float?
+  adminSignPage         Int?
+
+  creatorSignX          Float?
+  creatorSignY          Float?
+  creatorSignPage       Int?
+
   creatorSignatureUrl   String?
   creatorName           String?
   adminSignatureUrl     String?
