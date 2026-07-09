@@ -2,20 +2,14 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  // 定义需要保护的路径：
-  // 1. 主页 (/)
-  // 2. /contracts 及其子路由
-  // 3. /api/upload 和 /api/contracts (但不能拦截 /api/sign 因为达人需要它)
-  const isProtectedPath =
-    request.nextUrl.pathname === '/' ||
-    request.nextUrl.pathname.startsWith('/contracts') ||
-    request.nextUrl.pathname === '/api/upload' ||
-    (request.nextUrl.pathname.startsWith('/api/contracts') && !request.nextUrl.pathname.endsWith('/original'))
+  // 显式声明需要验证的路由前缀
+  const pathname = request.nextUrl.pathname
 
-  // /api/contracts/[id]/original 必须允许外部访问，因为达人的 PDF iframe 预览依赖这个接口
-  if (request.nextUrl.pathname.startsWith('/api/contracts') && request.nextUrl.pathname.endsWith('/original')) {
-    return NextResponse.next()
-  }
+  const isProtectedPath =
+    pathname === '/' ||
+    pathname.startsWith('/contracts') ||
+    pathname === '/api/upload' ||
+    (pathname.startsWith('/api/contracts') && !pathname.endsWith('/original'))
 
   if (isProtectedPath) {
     const basicAuth = request.headers.get('authorization')
@@ -39,12 +33,12 @@ export function middleware(request: NextRequest) {
     })
   }
 
-  // 其他路径（比如 /sign/[token] 和 /api/sign/[token]）正常放行
+  // 其他路径（如 /sign 和 /api/sign）全部放行
   return NextResponse.next()
 }
 
 export const config = {
-  // 我们只显式地匹配需要拦截的路由，避免任何误伤
+  // 限制 matcher 防止性能浪费和误伤其它 Next.js 内置路由
   matcher: [
     '/',
     '/contracts/:path*',
