@@ -37,6 +37,7 @@ export default function PositionPage({ params }: PositionProps) {
   // Track dragging state
   const [draggingTarget, setDraggingTarget] = useState<'admin' | 'creator' | null>(null)
   const [draggingPage, setDraggingPage] = useState<number | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
     params.then(p => {
@@ -86,42 +87,48 @@ export default function PositionPage({ params }: PositionProps) {
     }
   }
 
-  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent, target: 'admin' | 'creator', pageNum: number) => {
-    if (e.cancelable) e.preventDefault()
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>, target: 'admin' | 'creator', pageNum: number) => {
+    // Prevent default touch behaviors like scrolling
+    if (e.pointerType === 'touch' && e.cancelable) {
+      e.preventDefault();
+    }
+
+    // Capture the pointer so dragging works perfectly even if the cursor moves outside the box temporarily
+    e.currentTarget.setPointerCapture(e.pointerId)
+
+    // Calculate the exact pixel offset where the user clicked inside the box
+    const rect = e.currentTarget.getBoundingClientRect()
+    const offsetX = e.clientX - rect.left
+    const offsetY = e.clientY - rect.top
+
+    setDragOffset({ x: offsetX, y: offsetY })
     setDraggingTarget(target)
     setDraggingPage(pageNum)
   }
 
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!draggingTarget || draggingPage === null) return
-    const container = pageRefs.current[draggingPage - 1]
-    if (!container) return
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>, target: 'admin' | 'creator', pageNum: number) => {
+    if (draggingTarget !== target || draggingPage !== pageNum) return
 
-    let clientX, clientY;
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX
-      clientY = e.touches[0].clientY
-    } else {
-      clientX = (e as React.MouseEvent).clientX
-      clientY = (e as React.MouseEvent).clientY
-    }
+    const parentRect = e.currentTarget.parentElement?.getBoundingClientRect()
+    if (!parentRect) return
 
-    const rect = container.getBoundingClientRect()
+    // Calculate new position using the offset to prevent the box from "jumping" to center
+    let x = (e.clientX - dragOffset.x - parentRect.left) / parentRect.width
+    let y = (e.clientY - dragOffset.y - parentRect.top) / parentRect.height
 
-    let x = (clientX - rect.left) / rect.width
-    let y = (clientY - rect.top) / rect.height
-
+    // Clamp coordinates so it cannot leave the PDF page
     x = Math.max(0, Math.min(x, 0.75))
     y = Math.max(0, Math.min(y, 0.93))
 
-    if (draggingTarget === 'admin') {
+    if (target === 'admin') {
       setAdminPos(p => ({ ...p, x, y }))
     } else {
       setCreatorPos(p => ({ ...p, x, y }))
     }
   }
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId)
     setDraggingTarget(null)
     setDraggingPage(null)
   }
@@ -170,14 +177,7 @@ export default function PositionPage({ params }: PositionProps) {
   const boxHeight = "7%"
 
   return (
-    <div
-      className="min-h-screen bg-gray-100 pb-20"
-      onMouseMove={handlePointerMove}
-      onMouseUp={handlePointerUp}
-      onTouchMove={handlePointerMove}
-      onTouchEnd={handlePointerUp}
-      onMouseLeave={handlePointerUp}
-    >
+    <div className="min-h-screen bg-gray-100 pb-20">
       {/* Sticky Top Header */}
       <div className="sticky top-0 z-50 bg-white shadow-md border-b border-gray-200 px-4 py-3 mb-6">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -225,7 +225,7 @@ export default function PositionPage({ params }: PositionProps) {
                 {/* Page Canvas */}
                 <div
                   ref={el => { pageRefs.current[index] = el }}
-                  className="relative"
+                  className="relative touch-none"
                   style={{ width: renderWidth }}
                 >
                   <Page
@@ -239,18 +239,19 @@ export default function PositionPage({ params }: PositionProps) {
                   {/* Admin Drag Box */}
                   {hasAdmin && (
                     <div
-                      className="absolute border-2 border-dashed border-blue-600 bg-blue-500/30 cursor-move flex items-center justify-center text-blue-900 font-bold text-xs sm:text-sm shadow-md transition-all hover:bg-blue-500/40"
+                      className="absolute border-2 border-dashed border-blue-600 bg-blue-500/30 flex items-center justify-center text-blue-900 font-bold text-xs sm:text-sm shadow-md transition-all hover:bg-blue-500/40 select-none cursor-grab active:cursor-grabbing touch-none"
                       style={{
                         left: `${adminPos.x * 100}%`,
                         top: `${adminPos.y * 100}%`,
                         width: boxWidth,
                         height: boxHeight,
-                        touchAction: 'none',
                         zIndex: draggingTarget === 'admin' ? 50 : 10,
-                        transform: draggingTarget === 'admin' ? 'scale(1.02)' : 'scale(1)'
+                        transform: draggingTarget === 'admin' ? 'scale(1.03)' : 'scale(1)'
                       }}
-                      onMouseDown={(e) => handlePointerDown(e, 'admin', pageNum)}
-                      onTouchStart={(e) => handlePointerDown(e, 'admin', pageNum)}
+                      onPointerDown={(e) => handlePointerDown(e, 'admin', pageNum)}
+                      onPointerMove={(e) => handlePointerMove(e, 'admin', pageNum)}
+                      onPointerUp={handlePointerUp}
+                      onPointerCancel={handlePointerUp}
                     >
                       My Sign
                     </div>
@@ -259,18 +260,19 @@ export default function PositionPage({ params }: PositionProps) {
                   {/* Creator Drag Box */}
                   {hasCreator && (
                     <div
-                      className="absolute border-2 border-dashed border-green-600 bg-green-500/30 cursor-move flex items-center justify-center text-green-900 font-bold text-xs sm:text-sm shadow-md transition-all hover:bg-green-500/40"
+                      className="absolute border-2 border-dashed border-green-600 bg-green-500/30 flex items-center justify-center text-green-900 font-bold text-xs sm:text-sm shadow-md transition-all hover:bg-green-500/40 select-none cursor-grab active:cursor-grabbing touch-none"
                       style={{
                         left: `${creatorPos.x * 100}%`,
                         top: `${creatorPos.y * 100}%`,
                         width: boxWidth,
                         height: boxHeight,
-                        touchAction: 'none',
                         zIndex: draggingTarget === 'creator' ? 50 : 10,
-                        transform: draggingTarget === 'creator' ? 'scale(1.02)' : 'scale(1)'
+                        transform: draggingTarget === 'creator' ? 'scale(1.03)' : 'scale(1)'
                       }}
-                      onMouseDown={(e) => handlePointerDown(e, 'creator', pageNum)}
-                      onTouchStart={(e) => handlePointerDown(e, 'creator', pageNum)}
+                      onPointerDown={(e) => handlePointerDown(e, 'creator', pageNum)}
+                      onPointerMove={(e) => handlePointerMove(e, 'creator', pageNum)}
+                      onPointerUp={handlePointerUp}
+                      onPointerCancel={handlePointerUp}
                     >
                       Creator Sign
                     </div>
