@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // 放行静态资源
+  // 始终放行静态资源，防止任何误拦截
   if (
     pathname.startsWith('/_next') ||
     pathname.includes('.') ||
@@ -31,19 +31,7 @@ export function middleware(request: NextRequest) {
   const isCreatorRoute = pathname.startsWith('/sign') || pathname.startsWith('/api/sign')
   const isSharedRoute = pathname.startsWith('/api/contracts') && pathname.endsWith('/original')
 
-  // 判断是否为 Next.js 内部的预取/后台请求，这类请求坚决不能返回带有 WWW-Authenticate 的 401
-  const isPrefetch =
-    request.headers.get('x-middleware-prefetch') ||
-    request.headers.get('x-nextjs-data') ||
-    request.headers.get('next-router-prefetch') ||
-    request.headers.get('rsc') === '1' ||
-    request.headers.get('purpose') === 'prefetch'
-
   const send401 = (realm: string) => {
-    if (isPrefetch) {
-      // 核心修复：遇到后台加载主页数据的请求，直接掐断（返回 403），绝对不触发原生账密弹窗
-      return new NextResponse('Unauthorized prefetch', { status: 403 })
-    }
     return new NextResponse('Authentication required', {
       status: 401,
       headers: { 'WWW-Authenticate': `Basic realm="${realm}"` }
