@@ -4,22 +4,21 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // 完全放行 /sign 和相关 API，以及 Next.js 静态文件
+  // 最严格的白名单：任何含有 sign 的路由或者 original 预览，都不受任何限制
   if (
-    pathname.startsWith('/sign') ||
-    pathname.startsWith('/api/sign') ||
+    pathname.includes('/sign') ||
+    pathname.includes('sign') ||
+    pathname.endsWith('/original') ||
     pathname.startsWith('/_next') ||
-    pathname.includes('.') ||
-    pathname.endsWith('/original')
+    pathname.includes('.')
   ) {
     return NextResponse.next()
   }
 
-  // Next.js App Router 中，后台的预取请求经常带有 x-nextjs-data 头
-  // 我们需要确保当达人页面预取主页信息时，不要返回 401 触发原生弹窗
-  // 相反，我们可以返回一个普通的 401 状态但不带 WWW-Authenticate 头，或者直接在预取时放行
+  // 预取请求不要弹框
   const isPrefetch = request.headers.get('x-middleware-prefetch') || request.headers.get('x-nextjs-data')
 
+  // 剩下的就是我们的后台页面： '/' 和 '/contracts...' 和 '/api/upload'
   const isProtected =
     pathname === '/' ||
     pathname.startsWith('/contracts') ||
@@ -36,12 +35,10 @@ export function middleware(request: NextRequest) {
       }
     }
 
-    // 如果这是一个预加载请求，返回 404 或者空数据，防止触发浏览器的账密弹窗
     if (isPrefetch) {
       return new NextResponse(null, { status: 404 })
     }
 
-    // 只有在用户直接访问管理页面时，才发送 WWW-Authenticate 头
     return new NextResponse('Authentication required', {
       status: 401,
       headers: {
