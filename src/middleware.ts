@@ -44,15 +44,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 必须把需要放行的页面从 matcher 中排除，因为 matcher 会拦截页面的首次 HTML 请求
+  // 我们只显式地匹配需要拦截的路由，避免任何误伤
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - sign (达人签名页面)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!sign|_next/static|_next/image|favicon.ico).*)',
+    '/',
+    '/contracts/:path*',
+    '/api/upload',
+    '/api/contracts/:path*'
   ]
 }
