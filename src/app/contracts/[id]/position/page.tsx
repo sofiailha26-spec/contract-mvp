@@ -18,7 +18,6 @@ export default function PositionPage({ params }: PositionProps) {
   const [id, setId] = useState<string>('')
   const [pdfData, setPdfData] = useState<string>('')
   const [numPages, setNumPages] = useState<number>(1)
-  const [currentPage, setCurrentPage] = useState<number>(1)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -26,14 +25,18 @@ export default function PositionPage({ params }: PositionProps) {
   const [pdfNativeWidth, setPdfNativeWidth] = useState(595.28)
   const [pdfNativeHeight, setPdfNativeHeight] = useState(841.89)
 
+  // Responsive page width for react-pdf renderer
+  const [renderWidth, setRenderWidth] = useState(800)
+
   // Box positions as percentages (0 to 1)
   const [adminPos, setAdminPos] = useState({ x: 0.1, y: 0.85, page: 1 })
   const [creatorPos, setCreatorPos] = useState({ x: 0.5, y: 0.85, page: 1 })
 
-  const containerRef = useRef<HTMLDivElement>(null)
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([])
 
   // Track dragging state
   const [draggingTarget, setDraggingTarget] = useState<'admin' | 'creator' | null>(null)
+  const [draggingPage, setDraggingPage] = useState<number | null>(null)
 
   useEffect(() => {
     params.then(p => {
@@ -41,6 +44,16 @@ export default function PositionPage({ params }: PositionProps) {
       fetchPdfData(p.id)
     })
   }, [params])
+
+  // Adjust PDF width based on window size
+  useEffect(() => {
+    const updateWidth = () => {
+      setRenderWidth(Math.min(window.innerWidth - 32, 800)) // Max 800px width, with 32px padding on mobile
+    }
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+    return () => window.removeEventListener('resize', updateWidth)
+  }, [])
 
   const fetchPdfData = async (contractId: string) => {
     try {
@@ -58,30 +71,31 @@ export default function PositionPage({ params }: PositionProps) {
     }
   }
 
-  // Handle document load to get native dimensions
   const onDocumentLoadSuccess = (pdf: any) => {
     setNumPages(pdf.numPages)
-    setCurrentPage(pdf.numPages)
+    // Default signatures to the very last page
     setAdminPos(p => ({ ...p, page: pdf.numPages }))
     setCreatorPos(p => ({ ...p, page: pdf.numPages }))
   }
 
   const onPageLoadSuccess = (page: any) => {
-    // Get the native dimensions of the PDF page from viewport
-    const viewport = page.getViewport({ scale: 1 })
-    setPdfNativeWidth(viewport.width)
-    setPdfNativeHeight(viewport.height)
+    if (page.pageNumber === 1) {
+      const viewport = page.getViewport({ scale: 1 })
+      setPdfNativeWidth(viewport.width)
+      setPdfNativeHeight(viewport.height)
+    }
   }
 
-  // Unified Mouse & Touch event handlers for dragging
-  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent, target: 'admin' | 'creator') => {
-    // Prevent default to avoid scrolling while dragging on mobile
-    if(e.cancelable) e.preventDefault()
+  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent, target: 'admin' | 'creator', pageNum: number) => {
+    if (e.cancelable) e.preventDefault()
     setDraggingTarget(target)
+    setDraggingPage(pageNum)
   }
 
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!draggingTarget || !containerRef.current) return
+    if (!draggingTarget || draggingPage === null) return
+    const container = pageRefs.current[draggingPage - 1]
+    if (!container) return
 
     let clientX, clientY;
     if ('touches' in e) {
@@ -92,25 +106,24 @@ export default function PositionPage({ params }: PositionProps) {
       clientY = (e as React.MouseEvent).clientY
     }
 
-    const rect = containerRef.current.getBoundingClientRect()
+    const rect = container.getBoundingClientRect()
 
-    // Calculate percentage relative to the visible page container
     let x = (clientX - rect.left) / rect.width
     let y = (clientY - rect.top) / rect.height
 
-    // Clamp coordinates so boxes don't go outside the PDF bounds
-    x = Math.max(0, Math.min(x, 0.75)) // 0.75 to leave space for box width
-    y = Math.max(0, Math.min(y, 0.93)) // 0.93 to leave space for box height
+    x = Math.max(0, Math.min(x, 0.75))
+    y = Math.max(0, Math.min(y, 0.93))
 
     if (draggingTarget === 'admin') {
-      setAdminPos({ ...adminPos, x, y, page: currentPage })
+      setAdminPos(p => ({ ...p, x, y }))
     } else {
-      setCreatorPos({ ...creatorPos, x, y, page: currentPage })
+      setCreatorPos(p => ({ ...p, x, y }))
     }
   }
 
   const handlePointerUp = () => {
     setDraggingTarget(null)
+    setDraggingPage(null)
   }
 
   const handleSave = async () => {
@@ -120,10 +133,8 @@ export default function PositionPage({ params }: PositionProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // Convert percentages to pdf-lib coordinate space
-          // pdf-lib's Y coordinate starts from BOTTOM left
           adminSignX: adminPos.x * pdfNativeWidth,
-          adminSignY: (1 - adminPos.y) * pdfNativeHeight - 50, // Subtract 50 (height of signature) to match top-left to bottom-left origin
+          adminSignY: (1 - adminPos.y) * pdfNativeHeight - 50,
           adminSignPage: adminPos.page - 1,
 
           creatorSignX: creatorPos.x * pdfNativeWidth,
@@ -145,6 +156,13 @@ export default function PositionPage({ params }: PositionProps) {
     }
   }
 
+  const moveToThisPage = (pageNum: number) => {
+    setAdminPos(p => ({ ...p, page: pageNum }))
+    setCreatorPos(p => ({ ...p, page: pageNum }))
+    // Scroll to this page
+    pageRefs.current[pageNum - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   if (loading) return <div className="p-12 text-center">Loading PDF...</div>
   if (!pdfData) return <div className="p-12 text-center text-red-500">Could not load PDF.</div>
 
@@ -153,139 +171,115 @@ export default function PositionPage({ params }: PositionProps) {
 
   return (
     <div
-      className="min-h-screen bg-gray-50 pb-12"
+      className="min-h-screen bg-gray-100 pb-20"
       onMouseMove={handlePointerMove}
       onMouseUp={handlePointerUp}
       onTouchMove={handlePointerMove}
       onTouchEnd={handlePointerUp}
       onMouseLeave={handlePointerUp}
     >
-      <div className="max-w-5xl mx-auto py-6 px-4">
-        {/* Top Control Bar */}
-        <div className="mb-6 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200 gap-4">
+      {/* Sticky Top Header */}
+      <div className="sticky top-0 z-50 bg-white shadow-md border-b border-gray-200 px-4 py-3 mb-6">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div>
-            <h1 className="text-xl font-bold">Position Signatures</h1>
-            <p className="text-sm text-gray-500">Drag the boxes exactly where you want signatures to appear.</p>
+            <h1 className="text-xl font-bold text-gray-900">Review & Position Signatures</h1>
+            <p className="text-sm text-gray-500">Scroll to preview the full contract. Drag signatures to place them.</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-md">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
-                className="px-3 py-1 bg-white rounded shadow-sm disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <span className="text-sm font-medium px-2">Page {currentPage} of {numPages}</span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
-                disabled={currentPage >= numPages}
-                className="px-3 py-1 bg-white rounded shadow-sm disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-indigo-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save & Finish'}
-            </button>
-          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 shadow-sm transition-all w-full sm:w-auto"
+          >
+            {saving ? 'Saving...' : 'Save & Finish'}
+          </button>
         </div>
+      </div>
 
-        {/* Main Content Area */}
-        <div className="flex flex-col md:flex-row gap-6">
+      <div className="max-w-5xl mx-auto px-4 flex flex-col items-center">
+        <Document
+          file={`data:application/pdf;base64,${pdfData}`}
+          onLoadSuccess={onDocumentLoadSuccess}
+          className="flex flex-col items-center gap-8 w-full"
+        >
+          {Array.from(new Array(numPages), (el, index) => {
+            const pageNum = index + 1
+            const hasAdmin = adminPos.page === pageNum
+            const hasCreator = creatorPos.page === pageNum
 
-          {/* Instructions Sidebar */}
-          <div className="w-full md:w-64 bg-white p-4 rounded-lg shadow-sm border border-gray-200 self-start order-2 md:order-1">
-            <h3 className="font-bold mb-3">Instructions</h3>
-            <ol className="list-decimal pl-4 space-y-2 text-sm text-gray-600">
-              <li>Go to the page where signatures should be (usually the last page).</li>
-              <li>Drag the <span className="text-blue-600 font-semibold">Blue box</span> to where YOUR signature goes.</li>
-              <li>Drag the <span className="text-green-600 font-semibold">Green box</span> to where the CREATOR'S signature goes.</li>
-              <li>Click Save & Finish.</li>
-            </ol>
-            <div className="mt-6 pt-4 border-t space-y-2">
-              {adminPos.page !== currentPage && (
-                <div className="text-xs font-medium text-blue-600 bg-blue-50 p-2 rounded">
-                  Your Sign is currently on page {adminPos.page}
+            return (
+              <div key={`page_${pageNum}`} className="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col items-center border border-gray-200" style={{ width: renderWidth }}>
+
+                {/* Page Toolbar */}
+                <div className="w-full bg-gray-50 border-b border-gray-200 px-4 py-2 flex justify-between items-center">
+                  <span className="text-sm font-bold text-gray-600">Page {pageNum} of {numPages}</span>
+                  {(!hasAdmin || !hasCreator) && (
+                    <button
+                      onClick={() => moveToThisPage(pageNum)}
+                      className="text-xs bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-100 transition-colors shadow-sm"
+                    >
+                      Place Signatures Here
+                    </button>
+                  )}
                 </div>
-              )}
-              {creatorPos.page !== currentPage && (
-                <div className="text-xs font-medium text-green-600 bg-green-50 p-2 rounded">
-                  Creator Sign is currently on page {creatorPos.page}
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* PDF Viewer Area */}
-          <div className="flex-1 bg-gray-300 rounded-lg overflow-hidden border border-gray-400 p-2 flex justify-center order-1 md:order-2 shadow-inner">
-            {/* The wrapper that contains the PDF page and the draggable overlays */}
-            <div
-              ref={containerRef}
-              className="relative shadow-xl bg-white"
-              style={{ width: 'fit-content' }}
-            >
-              <Document
-                file={`data:application/pdf;base64,${pdfData}`}
-                onLoadSuccess={onDocumentLoadSuccess}
-                className="flex justify-center"
-              >
-                <Page
-                  pageNumber={currentPage}
-                  onLoadSuccess={onPageLoadSuccess}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                  // We let the page render at its native scale or responsive width
-                  className="max-w-full"
-                  width={window.innerWidth < 768 ? window.innerWidth - 64 : undefined} // Scale down on mobile
-                />
-              </Document>
-
-              {/* Admin Drag Box */}
-              {adminPos.page === currentPage && (
+                {/* Page Canvas */}
                 <div
-                  className="absolute border-2 border-dashed border-blue-600 bg-blue-500/30 cursor-move flex items-center justify-center text-blue-800 font-bold text-xs sm:text-sm shadow-md transition-shadow hover:shadow-lg hover:bg-blue-500/40"
-                  style={{
-                    left: `${adminPos.x * 100}%`,
-                    top: `${adminPos.y * 100}%`,
-                    width: boxWidth,
-                    height: boxHeight,
-                    touchAction: 'none',
-                    zIndex: draggingTarget === 'admin' ? 50 : 10
-                  }}
-                  onMouseDown={(e) => handlePointerDown(e, 'admin')}
-                  onTouchStart={(e) => handlePointerDown(e, 'admin')}
+                  ref={el => { pageRefs.current[index] = el }}
+                  className="relative"
+                  style={{ width: renderWidth }}
                 >
-                  My Sign
-                </div>
-              )}
+                  <Page
+                    pageNumber={pageNum}
+                    onLoadSuccess={onPageLoadSuccess}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                    width={renderWidth}
+                  />
 
-              {/* Creator Drag Box */}
-              {creatorPos.page === currentPage && (
-                <div
-                  className="absolute border-2 border-dashed border-green-600 bg-green-500/30 cursor-move flex items-center justify-center text-green-800 font-bold text-xs sm:text-sm shadow-md transition-shadow hover:shadow-lg hover:bg-green-500/40"
-                  style={{
-                    left: `${creatorPos.x * 100}%`,
-                    top: `${creatorPos.y * 100}%`,
-                    width: boxWidth,
-                    height: boxHeight,
-                    touchAction: 'none',
-                    zIndex: draggingTarget === 'creator' ? 50 : 10
-                  }}
-                  onMouseDown={(e) => handlePointerDown(e, 'creator')}
-                  onTouchStart={(e) => handlePointerDown(e, 'creator')}
-                >
-                  Creator Sign
-                </div>
-              )}
-            </div>
-          </div>
+                  {/* Admin Drag Box */}
+                  {hasAdmin && (
+                    <div
+                      className="absolute border-2 border-dashed border-blue-600 bg-blue-500/30 cursor-move flex items-center justify-center text-blue-900 font-bold text-xs sm:text-sm shadow-md transition-all hover:bg-blue-500/40"
+                      style={{
+                        left: `${adminPos.x * 100}%`,
+                        top: `${adminPos.y * 100}%`,
+                        width: boxWidth,
+                        height: boxHeight,
+                        touchAction: 'none',
+                        zIndex: draggingTarget === 'admin' ? 50 : 10,
+                        transform: draggingTarget === 'admin' ? 'scale(1.02)' : 'scale(1)'
+                      }}
+                      onMouseDown={(e) => handlePointerDown(e, 'admin', pageNum)}
+                      onTouchStart={(e) => handlePointerDown(e, 'admin', pageNum)}
+                    >
+                      My Sign
+                    </div>
+                  )}
 
-        </div>
+                  {/* Creator Drag Box */}
+                  {hasCreator && (
+                    <div
+                      className="absolute border-2 border-dashed border-green-600 bg-green-500/30 cursor-move flex items-center justify-center text-green-900 font-bold text-xs sm:text-sm shadow-md transition-all hover:bg-green-500/40"
+                      style={{
+                        left: `${creatorPos.x * 100}%`,
+                        top: `${creatorPos.y * 100}%`,
+                        width: boxWidth,
+                        height: boxHeight,
+                        touchAction: 'none',
+                        zIndex: draggingTarget === 'creator' ? 50 : 10,
+                        transform: draggingTarget === 'creator' ? 'scale(1.02)' : 'scale(1)'
+                      }}
+                      onMouseDown={(e) => handlePointerDown(e, 'creator', pageNum)}
+                      onTouchStart={(e) => handlePointerDown(e, 'creator', pageNum)}
+                    >
+                      Creator Sign
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </Document>
       </div>
     </div>
   )
