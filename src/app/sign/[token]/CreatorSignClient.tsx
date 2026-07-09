@@ -1,8 +1,7 @@
-'use client'
-
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import Link from 'next/link' // Add Link for custom logic
 
 // Dynamically import our wrapper component with ssr: false
 const SignaturePad = dynamic(() => import('@/components/SignaturePad'), { ssr: false })
@@ -28,7 +27,8 @@ export default function CreatorSignClient() {
   const fetchContract = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/sign/${token}`)
+      // Add a cache buster to prevent any Next.js caching shenanigans
+      const res = await fetch(`/api/sign/${token}?t=${Date.now()}`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setContract(data)
@@ -102,13 +102,16 @@ export default function CreatorSignClient() {
         <div className="w-full md:w-2/3 bg-gray-100 border-r border-gray-200 flex flex-col">
           <div className="bg-gray-800 text-white p-3 text-sm font-medium flex justify-between items-center">
             <span>Contract Document</span>
+            {/* Switched back to normal a tag to avoid next router fetching completely */}
             <a href={`/api/contracts/${contract.id}/original`} target="_blank" className="text-blue-300 hover:text-white underline text-xs">Open in new tab</a>
           </div>
           <div className="flex-1 overflow-auto">
+            {/* Added loading attribute to delay iframe loading slightly */}
             <iframe
                src={`/api/contracts/${contract.id}/original#toolbar=0&navpanes=0`}
                className="w-full h-full border-none"
                title="PDF Preview"
+               loading="lazy"
             />
           </div>
         </div>
