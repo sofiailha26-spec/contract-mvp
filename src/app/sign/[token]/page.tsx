@@ -102,11 +102,11 @@ export default function CreatorSignPage() {
         <div className="w-full md:w-2/3 bg-gray-100 border-r border-gray-200 flex flex-col">
           <div className="bg-gray-800 text-white p-3 text-sm font-medium flex justify-between items-center">
             <span>Contract Document</span>
-            <a href={contract.pdfUrl} target="_blank" className="text-blue-300 hover:text-white underline text-xs">Open in new tab</a>
+            <a href={`/api/contracts/${contract.id}/original`} target="_blank" className="text-blue-300 hover:text-white underline text-xs">Open in new tab</a>
           </div>
           <div className="flex-1 overflow-auto">
-            <iframe 
-               src={`${contract.pdfUrl}#toolbar=0&navpanes=0`} 
+            <iframe
+               src={`/api/contracts/${contract.id}/original#toolbar=0&navpanes=0`}
                className="w-full h-full border-none"
                title="PDF Preview"
             />

@@ -16,16 +16,12 @@ export async function GET(
       return new NextResponse('Contract not found or not completed', { status: 404 })
     }
 
-    // Load original PDF from base64 stored in DB (or fallback to local file)
+    // Load original PDF from base64 stored in DB
     let pdfBytes: ArrayBuffer | Buffer
     if (contract.pdfData) {
       pdfBytes = Buffer.from(contract.pdfData, 'base64')
     } else {
-      // Fallback: load from filesystem (local dev only)
-      const { readFile } = await import('fs/promises')
-      const path = await import('path')
-      const pdfPath = path.join(process.cwd(), 'public', contract.pdfUrl)
-      pdfBytes = await readFile(pdfPath)
+      return new NextResponse('PDF Data not found in database', { status: 404 })
     }
 
     const pdfDoc = await PDFDocument.load(pdfBytes)

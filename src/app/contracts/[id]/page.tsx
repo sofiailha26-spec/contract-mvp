@@ -30,8 +30,8 @@ export default async function ContractPage({
         <p><strong>Status:</strong> <span className="uppercase font-semibold">{contract.status}</span></p>
         
         <div className="mt-4">
-          <Link 
-            href={`/${contract.pdfUrl}`}
+          <Link
+            href={`/api/contracts/${contract.id}/original`}
             target="_blank"
             className="text-blue-500 hover:underline mr-4"
           >
