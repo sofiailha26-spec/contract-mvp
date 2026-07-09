@@ -31,8 +31,8 @@ export async function GET(
     const { width, height } = targetPage.getSize()
 
     // 提高 yPos 的值，在 PDF 中 0 是最底部，数值越大位置越靠上。
-    // 再向上移动 1.5cm（约 42pt），调整为 232
-    const yPos = 232
+    // 再向上移动 0.3cm（约 8.5pt），调整为 240
+    const yPos = 240
     const xPosA = 60
     const xPosB = 320
 

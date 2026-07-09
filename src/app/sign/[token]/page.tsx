@@ -79,7 +79,7 @@ export default function CreatorSignPage() {
       const res = await fetch(`/api/sign/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatorName, signature: signatureDataUrl })
+        body: JSON.stringify({ creatorName: 'Creator', signature: signatureDataUrl })
       })
 
       if (res.ok) {
@@ -136,18 +136,6 @@ export default function CreatorSignPage() {
              {hasRead && (
                <>
                  <div>
-                   <label className="block text-sm font-medium text-gray-900 mb-1">Full Name</label>
-                   <input
-                     type="text"
-                     required
-                     value={creatorName}
-                     onChange={(e) => setCreatorName(e.target.value)}
-                     className="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm"
-                     placeholder="John Doe"
-                   />
-                 </div>
-
-                 <div>
                    <div className="flex justify-between items-end mb-1">
                      <label className="block text-sm font-medium text-gray-900">Your Signature</label>
                      <button
@@ -159,7 +147,7 @@ export default function CreatorSignPage() {
                      </button>
                    </div>
                    <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
-                     <SignaturePad 
+                     <SignaturePad
                        ref={sigPadRef}
                        className="w-full h-32 rounded-lg cursor-crosshair"
                      />
@@ -168,7 +156,7 @@ export default function CreatorSignPage() {
 
                  <button
                    type="submit"
-                   disabled={submitting || !creatorName}
+                   disabled={submitting}
                    className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 mt-4"
                  >
                    {submitting ? 'Submitting...' : 'Sign Contract'}
