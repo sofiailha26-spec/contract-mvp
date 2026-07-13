@@ -29,8 +29,9 @@ export default function PositionPage({ params }: PositionProps) {
   const [renderWidth, setRenderWidth] = useState(800)
 
   // Box positions as percentages (0 to 1)
-  const [adminPos, setAdminPos] = useState({ x: 0.1, y: 0.85, page: 1 })
-  const [creatorPos, setCreatorPos] = useState({ x: 0.5, y: 0.85, page: 1 })
+  // FIX: Set default y to 0.1 (near the top/header) instead of 0.85 (bottom) to make it easier to grab
+  const [adminPos, setAdminPos] = useState({ x: 0.1, y: 0.1, page: 1 })
+  const [creatorPos, setCreatorPos] = useState({ x: 0.5, y: 0.1, page: 1 })
 
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -74,9 +75,9 @@ export default function PositionPage({ params }: PositionProps) {
 
   const onDocumentLoadSuccess = (pdf: any) => {
     setNumPages(pdf.numPages)
-    // Default signatures to the very last page
-    setAdminPos(p => ({ ...p, page: pdf.numPages }))
-    setCreatorPos(p => ({ ...p, page: pdf.numPages }))
+    // Default signatures to the very last page, but at the TOP (y: 0.1) as requested
+    setAdminPos(p => ({ ...p, page: pdf.numPages, y: 0.1 }))
+    setCreatorPos(p => ({ ...p, page: pdf.numPages, y: 0.1 }))
   }
 
   const onPageLoadSuccess = (page: any) => {
@@ -164,8 +165,9 @@ export default function PositionPage({ params }: PositionProps) {
   }
 
   const moveToThisPage = (pageNum: number) => {
-    setAdminPos(p => ({ ...p, page: pageNum }))
-    setCreatorPos(p => ({ ...p, page: pageNum }))
+    // When moving to a new page, also place them at the top
+    setAdminPos(p => ({ ...p, page: pageNum, y: 0.1 }))
+    setCreatorPos(p => ({ ...p, page: pageNum, y: 0.1 }))
     // Scroll to this page
     pageRefs.current[pageNum - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }

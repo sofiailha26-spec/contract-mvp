@@ -39,7 +39,16 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
+    // FIX: Do NOT select pdfData and pdfUrl which contain massive base64 strings
+    // This is what makes the dashboard page take forever to load.
     const contracts = await prisma.contract.findMany({
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        token: true,
+        createdAt: true
+      },
       orderBy: { createdAt: 'desc' }
     })
     return NextResponse.json(contracts)
